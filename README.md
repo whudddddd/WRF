@@ -83,7 +83,8 @@ sudo wget ftp://ftpprd.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20190731/00/
 
 ###2. 解压
 
-###3. 修改namelist.wps（参见附录namelist.wps编辑说明） 
+###3. 修改namelist.wps（参见附录namelist.wps编辑说明）
+ 
 修改时间
 
 
@@ -96,6 +97,9 @@ sudo wget ftp://ftpprd.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20190731/00/
 ###5. 在WPS目录下执行ln -sf ungrib/Variable_Tables/Vtable.GFS Vtable
 
 ###6. 在WPS目录下执行
+
+./link_grib.csh ../DATA/
+ln -sf ungrib/Variable_Tables/Vtable.GFS Vtable
 
 ./ungrib.exe
 
