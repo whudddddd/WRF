@@ -1,4 +1,5 @@
 # WRF
+
 wrf install and use
 
 ##WRF install 
@@ -38,6 +39,7 @@ glibc，然后就会看到结果有三个红点的glibc选项，也apply
 grib2，然后就会看到结果有libgrib2c-dev/libgrib2c0d选项，也apply
 
 ###**5.gedit ~/.bashrc**
+
     # for WRF
     export JASPERLIB=/usr/local/JASPER/lib
     export JASPERINC=/usr/local/JASPER/include
@@ -55,12 +57,14 @@ source ~/.bashrc
 ###**6.sudo python wrfinstall3.py**
 
 ###**7.安装WPF**
+
 sudo ./clean 
 sudo ./configure 
 选32
 sudo ./compile em_real>&checkwrf.log
 
 ###**9. 安装WPS**
+
 ./clean 
 source ~/.bashrc
 sudo ./configure 
