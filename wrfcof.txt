@@ -1,0 +1,11 @@
+sudo wget ftp://ftpprd.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20190731/00/gfs.t00z.pgrb2.0p50.f012
+
+export LD_LIBRARY_PATH=/usr/local/NETCDF/lib/:$LD_LIBRARY_PATH
+
+# for WPS
+export JASPERLIB=/usr/local/JASPER/lib
+export JASPERINC=/usr/local/JASPER/include
+export LD_LIBRARY_PATH=/usr/local/jasper/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/libpng/lib:$LD_LIBRARY_PATH
+export LD_LIBRARY_PATH=/usr/local/zlib/lib:$LD_LIBRARY_PATH
+
