@@ -94,11 +94,10 @@ sudo wget ftp://ftpprd.ncep.noaa.gov/pub/data/nccf/com/gfs/prod/gfs.20190731/00/
 
 ./geogrid.exe,生成geo_em* 文件
 
-###5. 在WPS目录下执行ln -sf ungrib/Variable_Tables/Vtable.GFS Vtable
-
-###6. 在WPS目录下执行
+###5. 在WPS目录下执行
 
 ./link_grib.csh ../DATA/
+
 ln -sf ungrib/Variable_Tables/Vtable.GFS Vtable
 
 ./ungrib.exe
@@ -107,21 +106,19 @@ ln -sf ungrib/Variable_Tables/Vtable.GFS Vtable
 
 运行后生成met开头的对应时间的文件，文件名称时间与实测数据一致
 
-###7. 切换到WRF/run目录
-
-###8. 修改namelist.input 
+###6. 切换到WRF/run目录,修改namelist.input 
 
 修改时间，对应namelist.wps
 
-###9. 把wps下边生成的met开头的文件考到wrf/run下边
+###7. 把wps下边生成的met开头的文件link 到wrf/run下边
 
 ln -sf  ../../WPS/met_em* ./
 
-###10. 执行./real.exe  
+### 8. 执行./real.exe  
 
-###11. 执行mpirun -np 8 ./wrf.exe
+###9. 执行mpirun -np 8 ./wrf.exe
 
-###12. 运行后输出文件wrfout*
+###10. 运行后输出文件wrfout*
 
 
 ***备注***
