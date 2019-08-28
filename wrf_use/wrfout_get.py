@@ -1,4 +1,4 @@
-from wrf import getvar, ALL_TIMES, to_np, interplevel, smooth2d, rh, td, tvirtual, tk
+from wrf import getvar, ALL_TIMES, to_np, interplevel, smooth2d, rh, td, tvirtual, tk,latlon_coords
 from wrf.g_temp import get_tv
 from wrf.g_slp import get_slp
 from netCDF4 import Dataset
@@ -10,18 +10,29 @@ from math import log, sqrt, atan, pi, pow
 import math
 
 
-class WrfUse:
-    def __init__(self, wrf_file_path, length, dlen, timeidx=0):
+class Wrf:
+    def __init__(self, wrf_file_path, length, dlen, timeidx):
         self.timeidx = timeidx
-        self.ncfile = Dataset(wrfout_file)
+        self.wrf_file_path = wrf_file_path
+        self.ncfile = Dataset(wrf_file_path)
         self.length = length
         self.dlen = dlen
 
     @property
     def get_keys(self):
+
+        """
+        wrf输出文件包含的所有变量
+        :return:
+        """
         return self.ncfile.variables.keys()
 
     def get_var(self, key):
+        """
+
+        :param key: 变量名,字符串
+        :return:
+        """
         var = getvar(self.ncfile, key, timeidx=self.timeidx)
         return var.data
 
@@ -78,6 +89,7 @@ class WrfUse:
 
     @property
     def get_M(self):
+
         M = self.get_N + 0.157 * self.get_height
         return M
 
@@ -128,7 +140,7 @@ class WrfUse:
     def insert_value(self, data):
         '''
 
-        :param length:长度
+        :param length:heghit
                dlen:步长
         :return:按高度插值后的量
         '''
@@ -172,15 +184,21 @@ class WrfUse:
         plt.colorbar()
 
     def savemat(self, savepath, key, value):
+        """
+        :param savepath: 保存路径
+        :param key: 保存变量名，字符串
+        :param value: 保存变量
+        :return:保存后的.mat文件
+        """
+
         value = value.data
         io.savemat(savepath + key + '.mat', {key: value})
 
     def get_height_in(self, shape=None):
         """
-
         :param delen: 步长
         :param shape: 插值范围大小
-        :return:
+        :return:插值后的高度
         """
         if not shape:
             height_in = np.zeros(shape)
@@ -193,7 +211,11 @@ class WrfUse:
         return height_in
 
     @property
-    def get_pre_duct_h(self):
+    def get_duct_h(self):
+        """
+
+        :return: wrf插值后的波导高度
+        """
         N_gradient = self.get_gradient(self.get_height, self.get_N)
         # N_gradient_in = self.insert_value(N_gradient)
         # height_in = self.insert_value(self.get_height)
@@ -210,13 +232,33 @@ class WrfUse:
 
     @property
     def get_sst(self):
+        """
+
+        :return: 海面压力
+        """
         return self.get_var("SST")
+
+
+    def savedata(self,dataname,data):
+        with open(dataname+'.dat', 'w') as f:
+            for i in range(data.shape[0]):
+                for k in range(data.shape[2]):
+                    for j in range(data.shape[1]):
+                        f.write(str(data[i,j,k]))
+                        f.write(',')
+                    f.write('\n')
+                f.write('\n')
+
+
+class NpsModel(Wrf):
+    def __init__(self, wrf_file_path, length, dlen, timeidx):
+        Wrf.__init__(self, wrf_file_path, length, dlen, timeidx)
 
     def psi_t(self, x):
         """
         温度普适函数
         :param x:
-        :return:
+        :return:温度普适函数，特征尺度
         """
         # x1 = np.cbrt(1 - 12.87 * x)
         # # import pdb;pdb.set_trace()
@@ -282,7 +324,7 @@ class WrfUse:
         """
         温度转化为位温
         :param pz:
-        :return:
+        :return:温度和位温转换
         """
         p0 = 1000
         Tz, _ = self.get_Tqz()
@@ -345,6 +387,10 @@ class WrfUse:
         return Mz
 
     def eva_duct(self):
+        """
+
+        :return:蒸发波导高度
+        """
         # p0=1000
         # Ra=287.05
         #
@@ -377,7 +423,8 @@ class WrfUse:
 
 savepath = "../savedata/"
 wrfout_file = '/home/ionolab/download/wrfout_d01_2019-07-31_00:00:00'
-w = WrfUse(wrfout_file, length=100, dlen=1, timeidx=0)
+w = Wrf(wrfout_file, length=500, dlen=1, timeidx=0)
+npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=0)
 # n_PBLH_INTERP = w.get_n_PBLH_INTERP
 # N_PBLH_INTERP = w.get_N_PBLH_INTERP
 HGT = w.get_HGT
@@ -399,5 +446,41 @@ HGT = w.get_HGT
 # # w.savemat(savepath, 'height', height)
 
 
-dct_h=w.eva_duct()
-cartopy_imshow.car_imshow(dct_h)
+# dct_h = npsmodel.eva_duct()
+# cartopy_imshow.car_imshow(dct_h)
+ncfile = Dataset(wrfout_file)
+
+# Get the sea level pressure
+slp = getvar(ncfile, "slp")
+# slp=w.get_var('slp')
+T = w.get_T#温度
+P=w.get_P#压强
+N=w.get_N#折射指数
+M=w.get_M#修正折射指数
+e=w.get_e#水汽压
+lons=w.get_var('XLONG')#经度
+lats=w.get_var('XLAT')#纬度度
+height = w.get_height#高度
+#
+# with open('lons.dat','w') as f:
+#         for j in range(99):
+#             for k in range(133):
+#                 # import pdb;pdb.set_trace()
+#                 f.write(str(lons[k,j]))
+#                 f.write(',')
+#             f.write('\n')
+#         f.write('\n')
+
+# T=w.insert_value(T)
+# p=w.insert_value(P)
+# M=w.insert_value(M)
+# N=w.insert_value(N)
+# e=w.insert_value(e)
+# height=w.insert_value(height)
+#
+# w.savedata('T',T)
+# w.savedata('P',P)
+# w.savedata('M',M)
+# w.savedata('N',N)
+# w.savedata('e',e)
+# w.savedata('height',height)
