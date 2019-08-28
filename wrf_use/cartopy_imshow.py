@@ -12,7 +12,7 @@ ncfile = Dataset("/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00
 
 # Get the sea level pressure
 slp = getvar(ncfile, "slp")
-data =getvar(ncfile,'T')
+T =getvar(ncfile,'T')
 # Smooth the sea level pressure since it tends to be noisy near the
 # mountains
 def car_imshow(data,slp=slp):
@@ -60,4 +60,5 @@ def car_imshow(data,slp=slp):
 
 
 if __name__ == "__main__":
-    car_imshow(data[0],slp)
+    car_imshow(T[0],slp)
+
