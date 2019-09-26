@@ -1,13 +1,17 @@
-from wrf import getvar, ALL_TIMES, to_np, interplevel, smooth2d, rh, td, tvirtual, tk,latlon_coords
+from wrf import getvar, ALL_TIMES, to_np, interplevel, smooth2d, rh, td, tvirtual, tk, latlon_coords
 from wrf.g_temp import get_tv
+from wrf.g_wind import get_u_destag, get_v_destag
 from wrf.g_slp import get_slp
 from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as io
 import cartopy_imshow
-from math import log, sqrt, atan, pi, pow
+from math import sqrt, atan, pi, pow
+from numpy import log
 import math
+import time
+import matplotlib.pyplot as plt
 
 
 class Wrf:
@@ -94,7 +98,7 @@ class Wrf:
         return M
 
     def get_gradient(self, x, y):
-        gradients = np.zeros([1000, x.shape[1], x.shape[2]])
+        gradients = np.zeros([int(self.length / self.dlen), x.shape[1], x.shape[2]])
         for xx in range(x.shape[1]):
             for yy in range(x.shape[2]):
                 coefficient = np.polyfit(x[:, xx, yy], y[:, xx, yy], 6)
@@ -104,7 +108,7 @@ class Wrf:
                 # gradient = np.polyval(gradient_coefficient, x[:, xx, yy])
                 # # plt.plot(x.data[:, xx, yy], gradient)
                 # gradients[:, xx, yy] = gradient
-                gradient = np.polyval(gradient_coefficient, np.arange(1000))
+                gradient = np.polyval(gradient_coefficient, np.arange(int(self.length / self.dlen)))
                 # plt.plot(x.data[:, xx, yy], gradient)
                 gradients[:, xx, yy] = gradient
         return gradients
@@ -200,11 +204,12 @@ class Wrf:
         :param shape: 插值范围大小
         :return:插值后的高度
         """
-        if not shape:
+        if shape:
             height_in = np.zeros(shape)
         else:
             height_in = np.zeros_like(self.get_N_PBLH_INTERP)
         index = 0
+        # import pdb;pdb.set_trace()
         for h in range(height_in.shape[0]):
             height_in[h, :, :] = index
             index += self.dlen
@@ -238,13 +243,12 @@ class Wrf:
         """
         return self.get_var("SST")
 
-
-    def savedata(self,dataname,data):
-        with open(dataname+'.dat', 'w') as f:
+    def savedata(self, dataname, data):
+        with open(dataname + '.dat', 'w') as f:
             for i in range(data.shape[0]):
                 for k in range(data.shape[2]):
                     for j in range(data.shape[1]):
-                        f.write(str(data[i,j,k]))
+                        f.write(str(data[i, j, k]))
                         f.write(',')
                     f.write('\n')
                 f.write('\n')
@@ -420,14 +424,22 @@ class NpsModel(Wrf):
             z2 += dz
         return dmap
 
+    def cn2(self, l0, M, a=2.8):
+        res = a * l0 ** (4 / 3) * M ** 2
+        return res
 
+
+# class AtDuct_intensity(NpsModel):
+
+
+start = time.time()
 savepath = "../savedata/"
-wrfout_file = '/home/ionolab/download/wrfout_d01_2019-07-31_00:00:00'
-w = Wrf(wrfout_file, length=500, dlen=1, timeidx=0)
-npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=0)
+wrfout_file = '/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00:00'
+w = Wrf(wrfout_file, length=20000, dlen=10, timeidx=4)
+npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=6)
 # n_PBLH_INTERP = w.get_n_PBLH_INTERP
 # N_PBLH_INTERP = w.get_N_PBLH_INTERP
-HGT = w.get_HGT
+# HGT = w.get_HGT
 # n = w.get_n
 # N = w.get_N
 # P = w.get_P
@@ -446,21 +458,33 @@ HGT = w.get_HGT
 # # w.savemat(savepath, 'height', height)
 
 
+# M0 = npsmodel.correct_N_profile(3, 1)
 # dct_h = npsmodel.eva_duct()
-# cartopy_imshow.car_imshow(dct_h)
-ncfile = Dataset(wrfout_file)
-
-# Get the sea level pressure
-slp = getvar(ncfile, "slp")
-# slp=w.get_var('slp')
-T = w.get_T#温度
-P=w.get_P#压强
-N=w.get_N#折射指数
-M=w.get_M#修正折射指数
-e=w.get_e#水汽压
-lons=w.get_var('XLONG')#经度
-lats=w.get_var('XLAT')#纬度度
-height = w.get_height#高度
+# M0[dct_h<0.1]=0
+# M_min = M0
+# for i in range(dct_h.shape[0]):
+#     for j in range(dct_h.shape[1]):
+#         if dct_h[i, j] > 0.1:
+#             M_min[i, j] = npsmodel.correct_N_profile(3, dct_h[i, j])[i, j]
+# M_min=npsmodel.correct_N_profile(3,dct_h)
+# M_min[np.isnan(M_min)]=0
+# eva_duct_intensity = M0 - M_min
+#
+# cartopy_imshow.car_imshow(eva_duct_intensity,string="Evaporation waveguide height (m) at 6 p.m.")
+# cartopy_imshow.car_imshow(dct_h,string="The intensity evaporation waveguide at 6 p.m.")
+# ncfile = Dataset(wrfout_file)
+#
+## Get the sea level pressure
+# slp = getvar(ncfile, "slp")
+## slp=w.get_var('slp')
+# T = w.get_T#温度
+# P=w.get_P#压强
+# N=w.get_N#折射指数
+# M=w.get_M#修正折射指数
+# e=w.get_e#水汽压
+# lons=w.get_var('XLONG')#经度
+# lats=w.get_var('XLAT')#纬度度
+# height = w.get_height#高度
 #
 # with open('lons.dat','w') as f:
 #         for j in range(99):
@@ -484,3 +508,23 @@ height = w.get_height#高度
 # w.savedata('N',N)
 # w.savedata('e',e)
 # w.savedata('height',height)
+u = w.get_var("U")
+v = w.get_var("V")
+s = np.sqrt(w.get_gradient(w.get_height, u) ** 2 + w.get_gradient(w.get_height, v) ** 2)
+l0_4_3 = np.zeros([2000, 133, 99])
+l0_4_3[:1200, :, :] = 0.1 ** (4 / 3) * 10 ** (1.64 + 42 * s)[:1200, :, :]  # dewan
+l0_4_3[1200:2000, :, :] = 0.1 ** (4 / 3) * 10 ** (0.506 + 50 * s)[1200:2000, :, :]  # dewan
+# l0_4_3 = 0.1 ** (4 / 3) * 10 ** (0.326 + 16.728 * s - 192.347 * w.get_gradient(w.get_height, w.get_T))  # hmns99
+h = w.get_height_in()
+# M = w.get_N_gradient
+M=(70*10**(-6)*w.insert_value(w.get_P/w.get_T**2)*(w.get_gradient(w.get_height,w.get_T)+0.0098))
+# l0 = 1.959 + 0.1376 * h - 8.918 * 10 ** (-6) * h ** 2 + \
+#      2.239 * 10 ** (-9) * h ** 3 + 30 / (1.2 + ((h - 5000) / 4000) ** 2)#wuxiaoqing
+# l0=np.log10(l0)
+l0=l0_4_3**(3/4)
+cn2 = npsmodel.cn2(l0, M)
+# cn2= 3.82 * 10 ** (-32)car * h ** 20.1 * np.e**(-h / 0.73) + 2.17 * 10 ** (-15 * np.e**(-h / 0.0136)) +\
+#      2.8 * 10 ** (-16) * np.e**(-h / 2.94)
+plt.semilogx(cn2[:, 10, 50], 10*np.transpose([range(2000)]))
+end = time.time()
+print("time cost is %f min" % ((end - start) / 60))
