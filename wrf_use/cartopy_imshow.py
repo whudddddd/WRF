@@ -7,15 +7,9 @@ from cartopy.feature import NaturalEarthFeature
 from wrf import (to_np, getvar, smooth2d, get_cartopy, cartopy_xlim,
                  cartopy_ylim, latlon_coords)
 
-# Open the NetCDF file
-ncfile = Dataset("/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00:00")
 
-# Get the sea level pressure
-slp = getvar(ncfile, "slp")
-T =getvar(ncfile,'T')
-# Smooth the sea level pressure since it tends to be noisy near the
-# mountains
-def car_imshow(data,slp=slp):
+def car_imshow(data, ncfile, string="Evaporation waveguide height (m)"):
+    slp = getvar(ncfile, "slp")
     smooth_slp = smooth2d(data, 3, cenweight=4)
 
     # Get the latitude and longitude points
@@ -25,7 +19,7 @@ def car_imshow(data,slp=slp):
     cart_proj = get_cartopy(slp)
 
     # Create a figure
-    fig = plt.figure(figsize=(12,6))
+    fig = plt.figure(figsize=(12, 6))
     # Set the GeoAxes to the projection used by WRF
     ax = plt.axes(projection=cart_proj)
 
@@ -54,11 +48,12 @@ def car_imshow(data,slp=slp):
     # Add the gridlines
     ax.gridlines(color="black", linestyle="dotted")
 
-    plt.title("Evaporation waveguide height (m)")
+    plt.title(string)
 
     plt.show()
 
 
 if __name__ == "__main__":
-    car_imshow(T[0],slp)
-
+    ncfile = Dataset("/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00:00")
+    T = getvar(ncfile, 'T')
+    car_imshow(T[0], ncfile)
