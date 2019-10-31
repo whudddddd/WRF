@@ -6,7 +6,7 @@ from netCDF4 import Dataset
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.io as io
-import cartopy_imshow
+from cartopy_imshow import car_imshow
 from math import sqrt, atan, pi, pow
 from numpy import log
 import math
@@ -46,7 +46,7 @@ class Wrf:
         相对温度k
         :return:
         """
-        T = self.get_var('T') + 300
+        T = (self.get_var('T') + 300)*((self.get_var('P') + self.get_var('PB'))/100000)**(2/7)
         return T
 
     @property
@@ -253,6 +253,21 @@ class Wrf:
                     f.write('\n')
                 f.write('\n')
 
+    def get_diff(self, data):
+        """
+
+        :param data: input
+        :return:
+        """
+        data = self.insert_value(data)
+        # import pdb;pdb.set_trace()
+        newmat = np.zeros([data.shape[0] - 1, data.shape[1], data.shape[2]])
+        for i in range(data.shape[1]):
+            for j in range(data.shape[2]):
+                diff = np.diff(data[:, i, j]) / w.dlen
+                newmat[:, i, j] = diff
+        return newmat
+
 
 class NpsModel(Wrf):
     def __init__(self, wrf_file_path, length, dlen, timeidx):
@@ -320,6 +335,7 @@ class NpsModel(Wrf):
         theta_r = 0.4 * (log(zr / z0t) - self.psi_t(zr / L)) ** (-1) * (self.get_T[1, :, :] - T0)  # 温度特征尺度
         q_r = 0.4 * (log(zr / z0q) - self.psi_t(zr / L)) ** (-1) * (
                 self.qs(self.get_T[1, :, :], self.get_P[1, :, :]) - q0)  # 比湿特征尺度
+        # import pdb;pdb.set_trace()
         Tz = T0 + theta_r / 0.4 * (log(z / z0t) - self.psi_t(z / L)) - Td * z
         qz = q0 + q_r / 0.4 * (log(z / z0t) - self.psi_t(z / L))  # - Td * z
         return Tz, qz
@@ -424,9 +440,70 @@ class NpsModel(Wrf):
             z2 += dz
         return dmap
 
+    @property
+    def eva_duct_intensity(self):
+        M0 = self.correct_N_profile(3, 1)
+        dct_h = self.eva_duct()
+        M0[dct_h < 0.1] = 0
+        M_min = M0
+        for i in range(dct_h.shape[0]):
+            for j in range(dct_h.shape[1]):
+                if dct_h[i, j] > 0.1:
+                    M_min[i, j] = self.correct_N_profile(3, dct_h[i, j])[i, j]
+        M_min[np.isnan(M_min)] = 0
+        eva_duct_intensity_ = M0 - M_min
+        return eva_duct_intensity_
+
+
+class TroposphericScatter(Wrf):
+    @property
+    def get_l0_M(self):
+        """
+        :return: 外尺度参数,折射率梯度
+        """
+        tropospheric_height = 12000
+        u = self.get_var("U")
+        v = self.get_var("V")
+        # s = np.sqrt(w.get_gradient(w.get_height, u) ** 2 + w.get_gradient(w.get_height, v) ** 2)
+        s = np.sqrt(self.get_diff(u[:, :, :-1]) ** 2 + self.get_diff(v[:, :-1, :]) ** 2)
+        l0_4_3 = np.zeros_like(s)
+        l0_4_3[:int(tropospheric_height / self.dlen), :, :] = 0.1 ** (4 / 3) * 10 ** (1.64 + 42 * s)[:int(
+            tropospheric_height / self.dlen), :, :]  # dewan
+        l0_4_3[int(tropospheric_height / self.dlen):, :, :] = 0.1 ** (4 / 3) * 10 ** (0.506 + 50 * s)[int(
+            tropospheric_height / self.dlen):, :, :]  # dewan
+        # l0_4_3 = 0.1 ** (4 / 3) * 10 ** (0.326 + 16.728 * s - 192.347 * w.get_gradient(w.get_height, w.get_T))  # hmns99
+        # h = self.get_height_in()
+        # M = w.get_N_gradient
+        # M = (70 * 10 ** (-6) * w.insert_value(self.get_P / self.get_T ** 2) * (self.get_gradient(self.get_height, self.get_T) + 0.0098))
+        M = (70 * 10 ** (-6) * w.insert_value(self.get_P / self.get_T ** 2)[:-1, :, :] * (
+                self.get_diff(self.get_T) + 0.0098))
+        # l0 = 1.959 + 0.1376 * h - 8.918 * 10 ** (-6) * h ** 2 + \
+        #      2.239 * 10 ** (-9) * h ** 3 + 30 / (1.2 + ((h - 5000) / 4000) ** 2)#wuxiaoqing
+        # l0=np.log10(l0)
+        l0 = l0_4_3 ** (3 / 4)
+        return l0, M
+
     def cn2(self, l0, M, a=2.8):
+        """
+
+        :param l0: 外尺度参数
+        :param M:  折射率梯度
+        :param a: 常数
+        :return: 大气折射率结构常数
+        """
         res = a * l0 ** (4 / 3) * M ** 2
         return res
+
+    def smmoth(self, data):
+        length = len(data)
+        newdata = data
+        newdata[1] = (data[1] + data[2]) / 2
+        newdata[2] = (data[1] + data[2] + data[3]) / 3
+        newdata[length - 1] = (data[length - 3] + data[length - 2] + data[length - 1]) / 3
+        newdata[length - 2] = (data[length - 4] + data[length - 3] + data[length - 2] + data[length - 1]) / 3
+        for i in range(3, length - 2):
+            newdata[i] = (data[i - 2] + data[i - 1] + data[i] + data[i + 1] + data[i + 2]) / 5
+        return newdata
 
 
 # class AtDuct_intensity(NpsModel):
@@ -434,9 +511,10 @@ class NpsModel(Wrf):
 
 start = time.time()
 savepath = "../savedata/"
-wrfout_file = '/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00:00'
-w = Wrf(wrfout_file, length=20000, dlen=10, timeidx=4)
-npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=6)
+# wrfout_file = '/home/ionolab/download/wrf/WRF/run/wrfout_d01_2019-07-31_00:00:00'
+wrfout_file = '/home/ionolab/wrfout/hainan/wrfout_d01_2018-09-23_00:00:00'
+w = Wrf(wrfout_file, length=100, dlen=1, timeidx=0)
+npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=0)
 # n_PBLH_INTERP = w.get_n_PBLH_INTERP
 # N_PBLH_INTERP = w.get_N_PBLH_INTERP
 # HGT = w.get_HGT
@@ -459,19 +537,21 @@ npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=6)
 
 
 # M0 = npsmodel.correct_N_profile(3, 1)
-# dct_h = npsmodel.eva_duct()
-# M0[dct_h<0.1]=0
+dct_h = npsmodel.eva_duct()
+# M0[dct_h < 0.1] = 0
 # M_min = M0
+#
 # for i in range(dct_h.shape[0]):
 #     for j in range(dct_h.shape[1]):
 #         if dct_h[i, j] > 0.1:
 #             M_min[i, j] = npsmodel.correct_N_profile(3, dct_h[i, j])[i, j]
-# M_min=npsmodel.correct_N_profile(3,dct_h)
-# M_min[np.isnan(M_min)]=0
+# # M_min = npsmodel.correct_N_profile(3, dct_h)
+# M_min[np.isnan(M_min)] = 0
 # eva_duct_intensity = M0 - M_min
-#
-# cartopy_imshow.car_imshow(eva_duct_intensity,string="Evaporation waveguide height (m) at 6 p.m.")
-# cartopy_imshow.car_imshow(dct_h,string="The intensity evaporation waveguide at 6 p.m.")
+eva_duct_intensity=npsmodel.eva_duct_intensity
+car_imshow(data=eva_duct_intensity,ncfile=w.ncfile, string="Evaporation waveguide height (m) at 6 p.m.")
+car_imshow(data=dct_h, ncfile=w.ncfile, string="The intensity evaporation waveguide at 6 p.m.")
+'''
 # ncfile = Dataset(wrfout_file)
 #
 ## Get the sea level pressure
@@ -508,23 +588,63 @@ npsmodel = NpsModel(wrfout_file, length=100, dlen=1, timeidx=6)
 # w.savedata('N',N)
 # w.savedata('e',e)
 # w.savedata('height',height)
-u = w.get_var("U")
-v = w.get_var("V")
-s = np.sqrt(w.get_gradient(w.get_height, u) ** 2 + w.get_gradient(w.get_height, v) ** 2)
-l0_4_3 = np.zeros([2000, 133, 99])
-l0_4_3[:1200, :, :] = 0.1 ** (4 / 3) * 10 ** (1.64 + 42 * s)[:1200, :, :]  # dewan
-l0_4_3[1200:2000, :, :] = 0.1 ** (4 / 3) * 10 ** (0.506 + 50 * s)[1200:2000, :, :]  # dewan
-# l0_4_3 = 0.1 ** (4 / 3) * 10 ** (0.326 + 16.728 * s - 192.347 * w.get_gradient(w.get_height, w.get_T))  # hmns99
-h = w.get_height_in()
-# M = w.get_N_gradient
-M=(70*10**(-6)*w.insert_value(w.get_P/w.get_T**2)*(w.get_gradient(w.get_height,w.get_T)+0.0098))
-# l0 = 1.959 + 0.1376 * h - 8.918 * 10 ** (-6) * h ** 2 + \
-#      2.239 * 10 ** (-9) * h ** 3 + 30 / (1.2 + ((h - 5000) / 4000) ** 2)#wuxiaoqing
-# l0=np.log10(l0)
-l0=l0_4_3**(3/4)
-cn2 = npsmodel.cn2(l0, M)
+# u = w.get_var("U")
+# v = w.get_var("V")
+# # s = np.sqrt(w.get_gradient(w.get_height, u) ** 2 + w.get_gradient(w.get_height, v) ** 2)
+# s = np.sqrt(w.get_diff(u[:,:,:-1])**2 + w.get_diff(v[:,:-1,:])**2)
+# l0_4_3 = np.zeros([187999, 133, 99])
+# l0_4_3[:12000, :, :] = 0.1 ** (4 / 3) * 10 ** (1.64 + 42 * s)[:12000, :, :]  # dewan
+# l0_4_3[12000:, :, :] = 0.1 ** (4 / 3) * 10 ** (0.506 + 50 * s)[12000:, :, :]  # dewan
+# # l0_4_3 = 0.1 ** (4 / 3) * 10 ** (0.326 + 16.728 * s - 192.347 * w.get_gradient(w.get_height, w.get_T))  # hmns99
+# h = w.get_height_in()
+# # M = w.get_N_gradient
+# M=(70*10**(-6)*w.insert_value(w.get_P/w.get_T**2)*(w.get_gradient(w.get_height,w.get_T)+0.0098))
+# # l0 = 1.959 + 0.1376 * h - 8.918 * 10 ** (-6) * h ** 2 + \
+# #      2.239 * 10 ** (-9) * h ** 3 + 30 / (1.2 + ((h - 5000) / 4000) ** 2)#wuxiaoqing
+# # l0=np.log10(l0)
+# l0=l0_4_3**(3/4)
+TS = TroposphericScatter(wrfout_file, length=20000, dlen=1, timeidx=4)
+l0, M = TS.get_l0_M
+cn2 = TS.cn2(l0, M)
 # cn2= 3.82 * 10 ** (-32)car * h ** 20.1 * np.e**(-h / 0.73) + 2.17 * 10 ** (-15 * np.e**(-h / 0.0136)) +\
 #      2.8 * 10 ** (-16) * np.e**(-h / 2.94)
-plt.semilogx(cn2[:, 10, 50], 10*np.transpose([range(2000)]))
+data = cn2[:, 0, 0]
+plt.semilogx(TS.smmoth(data), 10 * np.transpose([range(20000 - 1)]))
+plt.grid()
+plt.title("$2018.09.23  Cn^2$")
+plt.xlabel("$Cn^2$" + "$/m^-$" + "$^2$" + "$^/$" + "$^3$")
+plt.ylabel("height/km")
 end = time.time()
+plt.ylim([0, 200000])
+plt.xlim([10e-20, 10e-15])
 print("time cost is %f min" % ((end - start) / 60))
+'''
+# Tz, qz=npsmodel.get_Tqz()
+res=[]
+T=[]
+q=[]
+p=[]
+for i in range(1,50):
+    res.append(npsmodel.correct_N_profile(3,i))
+    Tz, qz = npsmodel.get_Tqz(3,i)
+    P=npsmodel.get_pz(i)
+    T.append(Tz)
+    q.append(qz)
+    p.append(P)
+res=np.array(res)
+T=np.array(T)
+q=np.array(q)
+p=np.array(p)
+plt.figure(1)
+plt.plot(T[:,0,0:10],range(49))
+plt.xlabel("temperature")
+plt.ylabel("height(m)")
+plt.figure(2)
+plt.plot(p[:,0,0:10],range(49))
+plt.xlabel("Pressure")
+plt.ylabel("height(m)")
+plt.figure(3)
+plt.plot(q[:,0,0:10],range(49))
+plt.xlabel("specific humidity")
+plt.ylabel("height(m)")
+
